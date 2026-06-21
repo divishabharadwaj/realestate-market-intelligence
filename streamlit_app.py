@@ -6,35 +6,137 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 # Set elegant dark page schema
-st.set_page_config(page_title="Parcl Buyer Profiler", layout="wide")
+st.set_page_config(page_title="Real Estate Market Intelligence", layout="wide", initial_sidebar_state="expanded")
 st.title("🏡 Real Estate Buyer Intelligence & ML Segmentation")
 
-# Loader logic
+# Loader logic generating 2,000 clients and 10,000 properties as required
 @st.cache_data
 def load_data():
-    # Simulated mapping of PDF OCR records & property transactions
+    np.random.seed(42)
+    
+    # 1. Generate 2,000 Clients (Buyers)
+    countries_regions = {
+        'USA': ['California', 'Virginia', 'Utah', 'Colorado', 'Nevada', 'New York', 'Washington', 'Florida', 'Ohio', 'Oregon'],
+        'Canada': ['Quebec', 'British Columbia', 'Ontario', 'Manitoba', 'Alberta'],
+        'Germany': ['Berlin', 'Hamburg', 'North Rhine', 'Bavaria'],
+        'Belgium': ['Brussels', 'Antwerp', 'Flanders'],
+        'UK': ['England', 'Scotland', 'Wales'],
+        'Australia': ['Victoria', 'New South Wales', 'Queensland']
+    }
+    
+    first_names_m = ['Grant', 'Franklin', 'Arthur', 'Cole', 'Conner', 'Xavier', 'Jace', 'Parker', 'Charles', 'Paul', 'Justin', 'Gianni', 'Walter', 'Peter', 'Nicholas', 'David', 'Stephen', 'Brandon', 'Samuel', 'Kenneth', 'Zachary', 'Michael', 'Lawrence']
+    first_names_f = ['Madalyn', 'Hazel', 'Janelle', 'Laurel', 'Judy', 'Amanda', 'Deborah', 'Danielle', 'Sarah', 'Dorothy', 'Ann', 'Patricia', 'Cynthia', 'Katherine', 'Ruth', 'Helen']
+    last_names = ['Weber', 'Mack', 'Bray', 'Mercer', 'Ayers', 'Taylor', 'Huff', 'Faulkner', 'Owen', 'Espinoza', 'Benitez', 'Riggs', 'Poole', 'Allen', 'Turner', 'Griffin', 'Peterson', 'Fritz', 'Adams', 'Williams', 'Jordan', 'Davis', 'Stone', 'Alexander', 'Hansen', 'Brown', 'Bennett', 'Pierce', 'Cooper', 'Jones', 'Thomas', 'Howard', 'Cox', 'Jackson', 'Martin', 'Bryant', 'Young', 'Scott']
+    
+    client_ids = [f"C{i:04d}" for i in range(1, 2001)]
+    client_types = []
+    genders = []
+    fnames = []
+    lnames = []
+    countries = []
+    regions = []
+    purposes = []
+    loans = []
+    channels = []
+    ages = []
+    satisfactions = []
+    
+    for i in range(1, 2001):
+        ct = 'Corporate' if i % 15 == 0 else ('Company' if i % 8 == 0 else 'Individual')
+        gender = np.random.choice(['M', 'F', 'Other'], p=[0.48, 0.48, 0.04]) if ct == 'Individual' else 'Other'
+        fn = np.random.choice(first_names_m) if gender == 'M' else (np.random.choice(first_names_f) if gender == 'F' else 'N/A')
+        ln = np.random.choice(last_names) if ct == 'Individual' else np.random.choice(['Group', 'Co', 'Holdings', 'Ventures', 'Inc', 'Ltd'])
+        
+        country = np.random.choice(list(countries_regions.keys()), p=[0.65, 0.15, 0.08, 0.04, 0.05, 0.03])
+        region = np.random.choice(countries_regions[country])
+        purpose = np.random.choice(['Home', 'Investment', 'Personal use'], p=[0.55, 0.35, 0.10])
+        loan = np.random.choice(['Yes', 'No'], p=[0.45, 0.55])
+        channel = np.random.choice(['Website', 'Agency', 'Client', 'Direct', 'Social Media'], p=[0.35, 0.25, 0.15, 0.15, 0.10])
+        age = int(np.random.randint(25, 80)) if ct == 'Individual' else int(np.random.randint(5, 30))
+        satisfaction = int(np.random.choice([1, 2, 3, 4, 5], p=[0.10, 0.15, 0.25, 0.30, 0.20]))
+        
+        client_types.append(ct)
+        genders.append(gender)
+        fnames.append(fn)
+        lnames.append(ln)
+        countries.append(country)
+        regions.append(region)
+        purposes.append(purpose)
+        loans.append(loan)
+        channels.append(channel)
+        ages.append(age)
+        satisfactions.append(satisfaction)
+        
     buyers = pd.DataFrame({
-        'client_id': [f"C{i:04d}" for i in range(1, 51)],
-        'client_type': ['Individual' if i % 4 != 0 else 'Company' for i in range(1, 51)],
-        'age': np.random.randint(25, 80, 50),
-        'satisfaction': np.random.randint(1, 6, 50),
-        'country': np.random.choice(['USA', 'Canada', 'Germany', 'Belgium'], 50),
-        'region': np.random.choice(['California', 'Nevada', 'Utah', 'Colorado'], 50),
-        'purpose': np.random.choice(['Home', 'Investment', 'Personal use'], 50),
-        'loan_applied': np.random.choice(['Yes', 'No'], 50),
-        'property_value': np.random.randint(150000, 750000, 50)
+        'client_id': client_ids,
+        'client_type': client_types,
+        'first_name': fnames,
+        'last_name': lnames,
+        'age': ages,
+        'gender': genders,
+        'country': countries,
+        'region': regions,
+        'purpose': purposes,
+        'loan_applied': loans,
+        'referral_channel': channels,
+        'satisfaction': satisfactions
     })
-    return buyers
+    
+    # 2. Generate 10,000 properties
+    property_ids = list(range(1001, 11001))
+    towers = [int((pid - 1001) // 1000 + 1) for pid in property_ids]
+    units = [int((pid - 1001) % 1000 + 1) for pid in property_ids]
+    categories = np.random.choice(['Apartment', 'Office'], size=10000, p=[0.85, 0.15])
+    areas = np.random.randint(500, 2500, size=10000)
+    prices = areas * np.random.uniform(180, 320, size=10000)
+    
+    client_refs = [""] * 10000
+    statuses = ["Available"] * 10000
+    
+    sold_indices = np.random.choice(range(10000), size=1900, replace=False)
+    for idx, client_idx in zip(sold_indices, np.random.randint(0, 2000, size=1900)):
+        client_refs[idx] = f"C{client_idx+1:04d}"
+        statuses[idx] = "Sold"
+        
+    properties = pd.DataFrame({
+        'listing_id': property_ids,
+        'tower_number': towers,
+        'unit_number': units,
+        'unit_category': categories,
+        'floor_area_sqft': areas,
+        'sale_price': prices,
+        'listing_status': statuses,
+        'client_ref': client_refs
+    })
+    
+    return buyers, properties
 
-df = load_data()
+buyers_df, properties_df = load_data()
 
-# Sidebar Controllers
+# Pre-merge to map actual sales onto buyers
+sold_properties = properties_df[properties_df['listing_status'] == 'Sold']
+merged_df = pd.merge(buyers_df, sold_properties, left_on='client_id', right_on='client_ref', how='left')
+merged_df['property_value'] = merged_df['sale_price'].fillna(0)
+
+# Display KPI Overview cards at top
+st.subheader("📊 Synchronized Database KPI Summary")
+kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+with kpi_col1:
+    st.metric("Total Clients Registered", f"{len(buyers_df):,}")
+with kpi_col2:
+    st.metric("Total Properties Listed", f"{len(properties_df):,}")
+with kpi_col3:
+    st.metric("Properties Sold", f"{len(sold_properties):,}")
+with kpi_col4:
+    st.metric("Total Sales Volume", f"${sold_properties['sale_price'].sum():,.2f}")
+
+# Sidebar Filters
 st.sidebar.image("https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=200", caption="Parcl Research Co.")
 st.sidebar.header("🎯 Data Filters")
-f_country = st.sidebar.selectbox("Country of Origin", ["All"] + list(df['country'].unique()))
-f_purpose = st.sidebar.selectbox("Investment Purpose", ["All"] + list(df['purpose'].unique()))
+f_country = st.sidebar.selectbox("Country of Origin", ["All"] + list(buyers_df['country'].unique()))
+f_purpose = st.sidebar.selectbox("Investment Purpose", ["All"] + list(buyers_df['purpose'].unique()))
 
-filtered_df = df.copy()
+filtered_df = merged_df.copy()
 if f_country != "All":
     filtered_df = filtered_df[filtered_df['country'] == f_country]
 if f_purpose != "All":
@@ -44,19 +146,24 @@ if f_purpose != "All":
 st.header("🤖 Automatic ML Buyer Profiler (K-Means)")
 k_clusters = st.slider("Select Target Segment Count (K)", 2, 8, 4)
 
-features = filtered_df[['age', 'satisfaction', 'property_value']]
-scaler = StandardScaler()
-scaled_features = scaler.fit_transform(features)
-
-kmeans = KMeans(n_clusters=k_clusters, random_state=42)
-filtered_df['cluster'] = kmeans.fit_predict(scaled_features)
-filtered_df['cluster'] = filtered_df['cluster'].apply(lambda x: f"Segment {x+1}")
+# Robust clustering check to prevent ValueError: n_samples should be >= n_clusters
+if len(filtered_df) < k_clusters:
+    st.warning(f"⚠️ **Not enough data points selected!** Only **{len(filtered_df)}** buyers match your active filters (Country: '{f_country}', Purpose: '{f_purpose}'). Running a K-Means algorithm with **K = {k_clusters}** requires at least as many data points. Please reduce K or select broader filters.")
+    filtered_df['cluster'] = "General Segment"
+else:
+    features = filtered_df[['age', 'satisfaction', 'property_value']]
+    scaler = StandardScaler()
+    scaled_features = scaler.fit_transform(features)
+    kmeans = KMeans(n_clusters=k_clusters, random_state=42, n_init=10)
+    filtered_df['cluster'] = kmeans.fit_predict(scaled_features)
+    filtered_df['cluster'] = filtered_df['cluster'].apply(lambda x: f"Segment {x+1}")
 
 col1, col2 = st.columns(2)
 with col1:
     fig = px.scatter(
         filtered_df, x="age", y="property_value", color="cluster",
-        size="satisfaction", hover_data=['client_id', 'country', 'purpose'],
+        size=np.where(filtered_df['property_value'] > 0, filtered_df['satisfaction'], 1),
+        hover_data=['client_id', 'country', 'purpose'],
         title="Buyer Segments: Age vs Property Investment Value",
         color_discrete_sequence=px.colors.qualitative.Bold
     )
@@ -76,4 +183,3 @@ with col2:
 st.header("🌎 Territory Coverage Overview")
 map_fig = px.histogram(filtered_df, x="region", color="cluster", barmode="group", title="Buyers mapped to Region territories")
 st.plotly_chart(map_fig, use_container_width=True)
-
