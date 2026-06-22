@@ -5,11 +5,11 @@ import plotly.express as px
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
-# Set elegant dashboard page schema
+# Set elegant dark page schema
 st.set_page_config(page_title="Real Estate Market Intelligence", layout="wide", initial_sidebar_state="expanded")
 st.title("🏡 Real Estate Buyer Intelligence & ML Segmentation")
 
-# Dataset Loader: Automatically generates 2,000 clients and 10,000 properties
+# Dataset Loader: Generating 2,000 clients and 10,000 properties as requested
 @st.cache_data
 def load_data():
     np.random.seed(42)
@@ -113,12 +113,12 @@ def load_data():
 
 buyers_df, properties_df = load_data()
 
-# Pre-merge to map actual property prices onto buyers
+# Pre-merge to map actual sales onto buyers
 sold_properties = properties_df[properties_df['listing_status'] == 'Sold']
 merged_df = pd.merge(buyers_df, sold_properties, left_on='client_id', right_on='client_ref', how='left')
 merged_df['property_value'] = merged_df['sale_price'].fillna(0)
 
-# Display KPI summary metrics at top of page
+# Display KPI Overview cards at top
 st.subheader("📊 Synchronized Database KPI Summary")
 kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
 with kpi_col1:
@@ -130,7 +130,7 @@ with kpi_col3:
 with kpi_col4:
     st.metric("Total Sales Volume", f"${sold_properties['sale_price'].sum():,.2f}")
 
-# Sidebar Filters Configuration
+# Sidebar Filters
 st.sidebar.image("https://images.unsplash.com/photo-1560518883-ce09059eeffa?q=80&w=200", caption="Parcl Research Co.")
 st.sidebar.header("🎯 Data Filters")
 f_country = st.sidebar.selectbox("Country of Origin", ["All"] + list(buyers_df['country'].unique()))
@@ -142,32 +142,65 @@ if f_country != "All":
 if f_purpose != "All":
     filtered_df = filtered_df[filtered_df['purpose'] == f_purpose]
 
-# Clustering Engine Interface
+# Core ML Segment Space
 st.header("🤖 Automatic ML Buyer Profiler (K-Means)")
-k_clusters = st.sidebar.slider("Select Target Segment Count (K)", 2, 8, 4)
+k_clusters = st.slider("Select Target Segment Count (K)", 2, 8, 4)
 
-# Robust safety boundary check to prevent ML shape errors
+# Robust clustering check to prevent ValueError: n_samples should be >= n_clusters
 if len(filtered_df) < k_clusters:
-    st.warning(f"⚠️ **Not enough data points match your current filters!** "
-               f"Only **{len(filtered_df)}** buyers match country: '{f_country}' and purpose: '{f_purpose}'. "
-               f"Running K-Means with **K = {k_clusters}** requires at least as many unique points. "
-               f"Please lower K or clear active filters.")
+    st.warning(f"⚠️ **Not enough data points selected!** Only **{len(filtered_df)}** buyers match your active filters (Country: '{f_country}', Purpose: '{f_purpose}'). Running a K-Means algorithm with **K = {k_clusters}** requires at least as many data points. Please reduce K or select broader filters.")
     filtered_df['cluster'] = "General Segment"
 else:
     features = filtered_df[['age', 'satisfaction', 'property_value']]
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(features)
     kmeans = KMeans(n_clusters=k_clusters, random_state=42, n_init=10)
-    filtered_df['cluster'] = kmeans.fit_predict(scaled_features)
-    filtered_df['cluster'] = filtered_df['cluster'].apply(lambda x: f"Segment {x+1}")
+    filtered_df['cluster_id'] = kmeans.fit_predict(scaled_features)
+    
+    # Calculate centroids on raw data to determine persona mapping dynamically
+    centroids_temp = filtered_df.groupby('cluster_id')[['age', 'property_value', 'satisfaction']].mean()
+    
+    cluster_map = {}
+    used_names = set()
+    sorted_centroid_idx = centroids_temp.sort_values(by='property_value', ascending=False).index.tolist()
+    
+    for rank, cl_id in enumerate(sorted_centroid_idx):
+        mean_val = centroids_temp.loc[cl_id, 'property_value']
+        mean_age = centroids_temp.loc[cl_id, 'age']
+        mean_sat = centroids_temp.loc[cl_id, 'satisfaction']
+        
+        # Heuristics mapping dynamic clusters onto academic buyer personas
+        if mean_val > 450000:
+            name = "C4: Luxury Investors"
+        elif mean_age > 48 and mean_val > 240000:
+            name = "C1: Global Investors"
+        elif mean_sat < 2.5:
+            name = "High-Stress Stressed Buyers"
+        elif mean_age < 38 and mean_val > 0:
+            name = "C2: First-Time Buyers"
+        elif mean_val == 0:
+            name = "Inactive Inquirers"
+        else:
+            name = "C3: Corporate Buyers" if mean_age < 32 else "Strategic Mid-Market Buyers"
+            
+        # Ensure name uniqueness when filtering triggers multiple identical designations
+        orig_name = name
+        counter = 2
+        while name in used_names:
+            name = f"{orig_name} {counter}"
+            counter += 1
+        used_names.add(name)
+        cluster_map[cl_id] = name
+        
+    filtered_df['cluster'] = filtered_df['cluster_id'].map(cluster_map)
 
-# Sidebar Centroid Analyser vs Global Averages
+# Sidebar Expander for Centroids vs Global Averages
 global_age = filtered_df['age'].mean()
 global_val = filtered_df['property_value'].mean()
 global_sat = filtered_df['satisfaction'].mean()
 
 with st.sidebar.expander("📊 Segment vs Global Centroids", expanded=True):
-    st.markdown("### 🎯 Filtered Baseline averages")
+    st.markdown("### 🎯 Global Filters Baseline")
     st.markdown(f"**Mean Age:** {global_age:.1f} yr\n"
                 f"**Avg Value:** ${global_val:,.2f}\n"
                 f"**Satisfaction:** {global_sat:.1f}/5")
@@ -202,7 +235,7 @@ with col1:
     st.plotly_chart(fig, use_container_width=True)
 
 with col2:
-    st.subheader("📈 Segment Performance Stats")
+    st.subheader("💡 Discovered Segment Intelligence")
     segment_stats = filtered_df.groupby('cluster').agg({
         'client_id': 'count',
         'age': 'mean',
@@ -213,14 +246,5 @@ with col2:
 
 # Country Map representation
 st.header("🌎 Territory Coverage Overview")
-map_fig = px.scatter_geo(
-    filtered_df, 
-    locations="country", 
-    locationmode="country names",
-    color="cluster", 
-    size="property_value",
-    hover_name="city" if "city" in filtered_df.columns else "region",
-    projection="natural earth",
-    title="Global Buyer Distributions mapped by Property Capitalization"
-)
+map_fig = px.histogram(filtered_df, x="region", color="cluster", barmode="group", title="Buyers mapped to Region territories")
 st.plotly_chart(map_fig, use_container_width=True)
