@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 st.set_page_config(page_title="Real Estate Market Intelligence", layout="wide", initial_sidebar_state="expanded")
 st.title("🏡 Real Estate Buyer Intelligence & ML Segmentation")
 
-# Dataset Loader: Generating 2,000 clients and 10,000 properties as requested
+# Loader logic generating 2,000 clients and 10,000 properties
 @st.cache_data
 def load_data():
     np.random.seed(42)
@@ -142,7 +142,7 @@ if f_country != "All":
 if f_purpose != "All":
     filtered_df = filtered_df[filtered_df['purpose'] == f_purpose]
 
-# Core ML Segment Space
+# ML Clustering block
 st.header("🤖 Automatic ML Buyer Profiler (K-Means)")
 k_clusters = st.slider("Select Target Segment Count (K)", 2, 8, 4)
 
@@ -157,39 +157,30 @@ else:
     kmeans = KMeans(n_clusters=k_clusters, random_state=42, n_init=10)
     filtered_df['cluster_id'] = kmeans.fit_predict(scaled_features)
     
-    # Calculate centroids on raw data to determine persona mapping dynamically
+    # Calculate centroids
     centroids_temp = filtered_df.groupby('cluster_id')[['age', 'property_value', 'satisfaction']].mean()
     
-    cluster_map = {}
-    used_names = set()
+    # Sort centroids by mean property_value descending to establish rank
     sorted_centroid_idx = centroids_temp.sort_values(by='property_value', ascending=False).index.tolist()
     
+    # Beautiful, professional corporate buyer personas
+    personas = [
+        "C4: Luxury Portfolio Investors",
+        "C1: Global High-Net-Worth Investors",
+        "C3: Institutional/Corporate Buyers",
+        "Strategic Mid-Market Buyers",
+        "C2: High-Intent First-Time Buyers",
+        "Active High-Stress Demanding Buyers",
+        "Entry-Level Speculative Inquirers",
+        "Passive Micro-Value Buyers"
+    ]
+    
+    cluster_map = {}
     for rank, cl_id in enumerate(sorted_centroid_idx):
-        mean_val = centroids_temp.loc[cl_id, 'property_value']
-        mean_age = centroids_temp.loc[cl_id, 'age']
-        mean_sat = centroids_temp.loc[cl_id, 'satisfaction']
-        
-        # Heuristics mapping dynamic clusters onto academic buyer personas
-        if mean_val > 450000:
-            name = "C4: Luxury Investors"
-        elif mean_age > 48 and mean_val > 240000:
-            name = "C1: Global Investors"
-        elif mean_sat < 2.5:
-            name = "High-Stress Stressed Buyers"
-        elif mean_age < 38 and mean_val > 0:
-            name = "C2: First-Time Buyers"
-        elif mean_val == 0:
-            name = "Inactive Inquirers"
+        if rank < len(personas):
+            name = personas[rank]
         else:
-            name = "C3: Corporate Buyers" if mean_age < 32 else "Strategic Mid-Market Buyers"
-            
-        # Ensure name uniqueness when filtering triggers multiple identical designations
-        orig_name = name
-        counter = 2
-        while name in used_names:
-            name = f"{orig_name} {counter}"
-            counter += 1
-        used_names.add(name)
+            name = f"Segment Persona {rank + 1}"
         cluster_map[cl_id] = name
         
     filtered_df['cluster'] = filtered_df['cluster_id'].map(cluster_map)
