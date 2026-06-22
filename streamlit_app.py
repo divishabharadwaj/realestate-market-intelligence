@@ -149,14 +149,71 @@ k_clusters = st.slider("Select Target Segment Count (K)", 2, 8, 4)
 # Robust clustering check to prevent ValueError: n_samples should be >= n_clusters
 if len(filtered_df) < k_clusters:
     st.warning(f"⚠️ **Not enough data points selected!** Only **{len(filtered_df)}** buyers match your active filters (Country: '{f_country}', Purpose: '{f_purpose}'). Running a K-Means algorithm with **K = {k_clusters}** requires at least as many data points. Please reduce K or select broader filters.")
-    filtered_df['cluster'] = "General Segment"
+    filtered_df['cluster'] = "General Cluster"
 else:
     features = filtered_df[['age', 'satisfaction', 'property_value']]
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(features)
     kmeans = KMeans(n_clusters=k_clusters, random_state=42, n_init=10)
-    filtered_df['cluster'] = kmeans.fit_predict(scaled_features)
-    filtered_df['cluster'] = filtered_df['cluster'].apply(lambda x: f"Segment {x+1}")
+    filtered_df['cluster_id'] = kmeans.fit_predict(scaled_features)
+    
+    # Calculate centroids
+    centroids_temp = filtered_df.groupby('cluster_id')[['age', 'property_value', 'satisfaction']].mean()
+    
+    # Sort centroids by mean property_value descending to establish rank
+    sorted_centroid_idx = centroids_temp.sort_values(by='property_value', ascending=False).index.tolist()
+    
+    # Beautiful, professional corporate buyer personas (C1 to C8 sequentially)
+    personas = [
+        "C1: Luxury Portfolio Investors",
+        "C2: Global High-Net-Worth Investors",
+        "C3: Institutional/Corporate Buyers",
+        "C4: Strategic Mid-Market Buyers",
+        "C5: High-Intent First-Time Buyers",
+        "C6: Active High-Stress Buyers",
+        "C7: Entry-Level Speculative Inquirers",
+        "C8: Passive Micro-Value Buyers"
+    ]
+    
+    cluster_map = {}
+    for rank, cl_id in enumerate(sorted_centroid_idx):
+        # Fallback security check
+        if rank < len(personas):
+            name = personas[rank]
+        else:
+            name = f"Cluster Persona {rank + 1}"
+        cluster_map[cl_id] = name
+        
+    filtered_df['cluster'] = filtered_df['cluster_id'].map(cluster_map)
+
+# Sidebar Expander for Centroids vs Global Averages
+global_age = filtered_df['age'].mean()
+global_val = filtered_df['property_value'].mean()
+global_sat = filtered_df['satisfaction'].mean()
+
+with st.sidebar.expander("📊 Segment vs Global Centroids", expanded=True):
+    st.markdown("### 🎯 Global Filters Baseline")
+    st.markdown(f"**Mean Age:** {global_age:.1f} yr\n"
+                f"**Avg Value:** ${global_val:,.2f}\n"
+                f"**Satisfaction:** {global_sat:.1f}/5")
+    st.markdown("---")
+    
+    if "cluster" in filtered_df.columns and filtered_df['cluster'].iloc[0] != "General Cluster":
+        centroids = filtered_df.groupby('cluster')[['age', 'property_value', 'satisfaction']].mean()
+        for idx, row in centroids.iterrows():
+            st.markdown(f"**🟢 {idx}**")
+            age_dev = row['age'] - global_age
+            val_dev = row['property_value'] - global_val
+            sat_dev = row['satisfaction'] - global_sat
+            
+            st.markdown(
+                f"- **Age:** {row['age']:.1f} yr ({'+' if age_dev >= 0 else ''}{age_dev:.1f} yr)\n"
+                f"- **Value:** ${row['property_value']:,.2f} ({'+' if val_dev >= 0 else ''}${val_dev:,.2f})\n"
+                f"- **Rating:** {row['satisfaction']:.1f}/5 ({'+' if sat_dev >= 0 else ''}{sat_dev:.1f})"
+            )
+            st.markdown(" ")
+    else:
+        st.info("Insufficient data points for robust segmentation comparison.")
 
 col1, col2 = st.columns(2)
 with col1:
