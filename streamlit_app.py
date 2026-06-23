@@ -93,8 +93,9 @@ def load_data():
     client_refs = [""] * 10000
     statuses = ["Available"] * 10000
     
-    sold_indices = np.random.choice(range(10000), size=1900, replace=False)
-    for idx, client_idx in zip(sold_indices, np.random.randint(0, 2000, size=1900)):
+    # Exact dataset parameters requested: 7,305 Sold and 2,695 Available
+    sold_indices = np.random.choice(range(10000), size=7305, replace=False)
+    for idx, client_idx in zip(sold_indices, np.random.randint(0, 2000, size=7305)):
         client_refs[idx] = f"C{client_idx+1:04d}"
         statuses[idx] = "Sold"
         
@@ -148,7 +149,7 @@ k_clusters = st.slider("Select Target Segment Count (K)", 2, 8, 4)
 
 # Robust clustering check to prevent ValueError: n_samples should be >= n_clusters
 if len(filtered_df) < k_clusters:
-    st.warning(f"⚠️ **Not enough data points selected!** Only **{len(filtered_df)}** buyers match your active filters (Country: '{f_country}', Purpose: '{f_purpose}'). Running a K-Means algorithm with **K = {k_clusters}** requires at least as many data points. Please reduce K or select broader filters.")
+    st.warning(f"⚠️ **Not enough data points selected!** Only **{len(filtered_df)}** buyers match your active filters. Running K-Means with **K = {k_clusters}** requires at least as many data points.")
     filtered_df['cluster'] = "General Cluster"
 else:
     features = filtered_df[['age', 'satisfaction', 'property_value']]
@@ -177,7 +178,6 @@ else:
     
     cluster_map = {}
     for rank, cl_id in enumerate(sorted_centroid_idx):
-        # Fallback security check
         if rank < len(personas):
             name = personas[rank]
         else:
