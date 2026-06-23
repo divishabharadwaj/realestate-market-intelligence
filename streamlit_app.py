@@ -93,11 +93,16 @@ def load_data():
     client_refs = [""] * 10000
     statuses = ["Available"] * 10000
     
-    # Exact dataset parameters requested: 7,305 Sold and 2,695 Available
     sold_indices = np.random.choice(range(10000), size=7305, replace=False)
     for idx, client_idx in zip(sold_indices, np.random.randint(0, 2000, size=7305)):
         client_refs[idx] = f"C{client_idx+1:04d}"
         statuses[idx] = "Sold"
+        
+    # Scale prices of sold properties to sum to exactly $2,520,750,960.84
+    sold_mask = np.array(statuses) == "Sold"
+    current_sold_sum = np.sum(prices[sold_mask])
+    scaling_factor = 2520750960.84 / current_sold_sum
+    prices[sold_mask] = prices[sold_mask] * scaling_factor
         
     properties = pd.DataFrame({
         'listing_id': property_ids,
@@ -143,18 +148,19 @@ if f_country != "All":
 if f_purpose != "All":
     filtered_df = filtered_df[filtered_df['purpose'] == f_purpose]
 
-# ML Clustering block
-st.header("🤖 Automatic ML Buyer Profiler (K-Means)")
+# Run K-Means Clustering on the filtered buyers dataset
+st.subheader("🤖 Segment Machine Learning Modeler")
 k_clusters = st.slider("Select Target Segment Count (K)", 2, 8, 4)
 
 # Robust clustering check to prevent ValueError: n_samples should be >= n_clusters
 if len(filtered_df) < k_clusters:
-    st.warning(f"⚠️ **Not enough data points selected!** Only **{len(filtered_df)}** buyers match your active filters. Running K-Means with **K = {k_clusters}** requires at least as many data points.")
+    st.warning(f"⚠️ **Not enough data points selected!** Only **{len(filtered_df)}** buyers match your active filters (Country: '{f_country}', Purpose: '{f_purpose}'). Running a K-Means algorithm with **K = {k_clusters}** requires at least as many data points. Please reduce K or select broader filters.")
     filtered_df['cluster'] = "General Cluster"
 else:
     features = filtered_df[['age', 'satisfaction', 'property_value']]
     scaler = StandardScaler()
     scaled_features = scaler.fit_transform(features)
+    
     kmeans = KMeans(n_clusters=k_clusters, random_state=42, n_init=10)
     filtered_df['cluster_id'] = kmeans.fit_predict(scaled_features)
     
@@ -178,6 +184,7 @@ else:
     
     cluster_map = {}
     for rank, cl_id in enumerate(sorted_centroid_idx):
+        # Fallback security check
         if rank < len(personas):
             name = personas[rank]
         else:
@@ -186,57 +193,56 @@ else:
         
     filtered_df['cluster'] = filtered_df['cluster_id'].map(cluster_map)
 
-# Sidebar Expander for Centroids vs Global Averages
-global_age = filtered_df['age'].mean()
-global_val = filtered_df['property_value'].mean()
-global_sat = filtered_df['satisfaction'].mean()
+# Layout: Split into columns for graphics and stats
+vis_col, stats_col = st.columns([2, 1])
 
-with st.sidebar.expander("📊 Segment vs Global Centroids", expanded=True):
-    st.markdown("### 🎯 Global Filters Baseline")
-    st.markdown(f"**Mean Age:** {global_age:.1f} yr\n"
-                f"**Avg Value:** ${global_val:,.2f}\n"
-                f"**Satisfaction:** {global_sat:.1f}/5")
+with vis_col:
+    st.markdown("### 📈 Customer Segments Interactive Distribution")
+    fig = px.scatter(
+        filtered_df, x="age", y="property_value", color="cluster",
+        size="satisfaction", hover_data=["client_id", "client_type", "country", "satisfaction"],
+        color_discrete_sequence=px.colors.qualitative.Bold,
+        labels={"age": "Age of Buyer", "property_value": "Property Value Invested ($)", "satisfaction": "Satisfaction score"},
+        title="Buyer Segments: Age vs Property Investment Value",
+        template="plotly_dark"
+    )
+    fig.update_layout(
+        font_family="Inter",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+with stats_col:
+    st.markdown("### 🧭 Segment Characteristics")
+    global_sat = filtered_df['satisfaction'].mean()
+    st.info(f"💡 **Active Filter Global Stats:**\n\n"
+            f"**Average Age:** {filtered_df['age'].mean():.1f} yr\n\n"
+            f"**Satisfaction:** {global_sat:.1f}/5")
     st.markdown("---")
     
     if "cluster" in filtered_df.columns and filtered_df['cluster'].iloc[0] != "General Cluster":
         centroids = filtered_df.groupby('cluster')[['age', 'property_value', 'satisfaction']].mean()
         for idx, row in centroids.iterrows():
             st.markdown(f"**🟢 {idx}**")
-            age_dev = row['age'] - global_age
-            val_dev = row['property_value'] - global_val
-            sat_dev = row['satisfaction'] - global_sat
-            
-            st.markdown(
-                f"- **Age:** {row['age']:.1f} yr ({'+' if age_dev >= 0 else ''}{age_dev:.1f} yr)\n"
-                f"- **Value:** ${row['property_value']:,.2f} ({'+' if val_dev >= 0 else ''}${val_dev:,.2f})\n"
-                f"- **Rating:** {row['satisfaction']:.1f}/5 ({'+' if sat_dev >= 0 else ''}{sat_dev:.1f})"
-            )
-            st.markdown(" ")
-    else:
-        st.info("Insufficient data points for robust segmentation comparison.")
+            st.markdown(f"- Mean Age: `{row['age']:.1f} yrs`\n"
+                        f"- Avg Portfolio: `${row['property_value']:,.2f}`\n"
+                        f"- Mean Satisfaction Score: `{row['satisfaction']:.2f}/5`")
+            st.markdown("---")
 
-col1, col2 = st.columns(2)
-with col1:
-    fig = px.scatter(
-        filtered_df, x="age", y="property_value", color="cluster",
-        size=np.where(filtered_df['property_value'] > 0, filtered_df['satisfaction'], 1),
-        hover_data=['client_id', 'country', 'purpose'],
-        title="Buyer Segments: Age vs Property Investment Value",
-        color_discrete_sequence=px.colors.qualitative.Bold
-    )
-    st.plotly_chart(fig, use_container_width=True)
+# Additional analytics tables at the bottom
+st.subheader("💡 Discovered Segment Intelligence")
+tab1, tab2 = st.tabs(["📋 Segmented Client Registry", "🗺️ Geographic Region Mapping"])
 
-with col2:
-    st.subheader("💡 Discovered Segment Intelligence")
+with tab1:
     segment_stats = filtered_df.groupby('cluster').agg({
         'client_id': 'count',
         'age': 'mean',
         'property_value': 'mean',
         'satisfaction': 'mean'
     }).rename(columns={'client_id': 'Total Buyers', 'age': 'Mean Age', 'property_value': 'Avg Value', 'satisfaction': 'Satisfaction'})
-    st.dataframe(segment_stats.style.format({'Mean Age': '{:.1f} yr', 'Avg Value': '${:,.2f}', 'Satisfaction': '{:.1f} / 5'}))
+    st.dataframe(segment_stats.style.format({'Avg Value': "${:,.2f}", 'Mean Age': "{:.1f}", 'Satisfaction': "{:.2f}/5"}), use_container_width=True)
 
-# Country Map representation
-st.header("🌎 Territory Coverage Overview")
-map_fig = px.histogram(filtered_df, x="region", color="cluster", barmode="group", title="Buyers mapped to Region territories")
-st.plotly_chart(map_fig, use_container_width=True)
+with tab2:
+    map_fig = px.histogram(filtered_df, x="region", color="cluster", barmode="group", title="Buyers mapped to Region territories")
+    map_fig.update_layout(template="plotly_dark")
+    st.plotly_chart(map_fig, use_container_width=True)
